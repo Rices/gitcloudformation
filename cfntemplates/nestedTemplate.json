@@ -1,0 +1,15 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",
+    "Resources" : {
+        "myStackWithParams" : {
+  	       "Type" : "AWS::CloudFormation::Stack",
+	       "Properties" : {
+	           "TemplateURL" : "https://raw.githubusercontent.com/Rices/gitcloudformation/master/cfntemplates/S3Template_encryption_violation.json",
+	           "Parameters" : {
+	               "InstanceType" : "t2.micro",
+	               "KeyName" : "mykey"
+	           }
+   	       }
+        }
+    }
+}
