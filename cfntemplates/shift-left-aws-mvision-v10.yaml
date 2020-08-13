@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Performing Shift Left Integration with AWS CI/CD Services
+Parameters:
+  ManagedRole1:
+    Type: String
+    Description: Code Build Access
+    Default: arn:aws:iam::aws:policy/AWSCodeBuildDeveloperAccess
+  ManagedRole2:
+    Type: String
+    Description: Basic Lambda execution Access
+    Default: arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  ManagedRole3:
+    Type: String
+    Description: AWS Code Commit Access
+    Default: arn:aws:iam::aws:policy/AWSCodeCommitFullAccess
+  ManagedRole4:
+    Type: String
+    Description: AWS Systems Manager Access
+    Default: arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
+  ManagedRole5:
+    Type: String
+    Description: Cloud Watch Access
+    Default: arn:aws:iam::aws:policy/CloudWatchFullAccess
+Resources:
+  LambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: IAM role for shift left Lambda
+      ManagedPolicyArns:
+        - !Ref ManagedRole1
+        - !Ref ManagedRole2
+      RoleName: !Join ['-', ['shift-left-iam-role', !Ref 'AWS::AccountId']]
+  CodebuildRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Description: IAM role for shift left code build
+      ManagedPolicyArns:
+        - !Ref ManagedRole3
+        - !Ref ManagedRole4
+        - !Ref ManagedRole5
+      RoleName: !Join ['-', ['shift-left-code-build-role', !Ref 'AWS::AccountId']]
+  ShiftLeftLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: LambdaRole
+    Properties:
+      Code:
+        ZipFile: |
+          exports.handler = (event) => {
+            const AWS = require("aws-sdk")
+            const codebuild = new AWS.CodeBuild()
+            const build = {
+              projectName: "build-shift-left-integration"
+            };
+            codebuild.startBuild(build, function(err, data) {
+              if (err) {
+                console.log("Error!")
+                console.log(err, err.stack)
+              }
+            });
+            };
+      Description: Lambda function to trigger Shift Left CodeBuild
+      FunctionName: !Join ['-', ['invoke-code-build', !Ref 'AWS::AccountId']]
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: nodejs10.x
+      Timeout: 10
+  ShiftLeftRepo:
+    Type: AWS::CodeCommit::Repository
+    DependsOn: ShiftLeftLambda
+    Properties:
+      RepositoryDescription: Repository for Cloud formation templates
+      RepositoryName: shift-left-repo
+  ShiftLeftBuild:
+    Type: AWS::CodeBuild::Project
+    DependsOn: CodebuildRole
+    Properties:
+      Name: build-shift-left-integration
+      Description: Perform Shift Left Integration with MVISION Cloud
+      ServiceRole: !GetAtt CodebuildRole.Arn
+      Artifacts:
+        Type: no_artifacts
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:3.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: csp
+            Value: aws
+      Source:
+        Location: !Join ['', ['https://git-codecommit.', !Ref 'AWS::Region', .amazonaws.com/v1/repos/shift-left-repo]]
+        Type: CODECOMMIT
+      TimeoutInMinutes: 60
